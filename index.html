@@ -6,8 +6,8 @@
 <title>Ear Prompter</title>
 <style>
   :root {
-    --bg: #0b0d10; --card: #151920; --card2: #1c212a; --line: #2a303b; --text: #f2f4f7; --dim: #9aa4b2;
-    --yellow: #ffd400; --blue: #59a8ff; --green: #33d17a; --red: #ff6b6b;
+    --bg: #06070b; --card: #0f1219; --card2: #161b26; --line: #232a3a; --text: #eceff6; --dim: #8b93a8; --faint: #5d667c;
+    --blue: #3d7bff; --blue2: #2a5bd0; --blue-soft: #8fb3ff; --violet: #8b5cf6; --green: #2fd69b; --red: #ff5d6c; --warn: #ffb84d;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--text); }
@@ -15,7 +15,7 @@
   main { max-width: 640px; margin: 0 auto; padding: 14px 14px 60px; }
   header { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 2px 12px; }
   h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-  h1 span { background: var(--yellow); color: #000; padding: 0 6px; border-radius: 4px; }
+  h1 span { background: linear-gradient(135deg, var(--blue), var(--violet)); color: #fff; padding: 0 7px; border-radius: 5px; }
   .ver { color: var(--dim); font-size: 13px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -26,20 +26,27 @@
     padding: 10px 14px; min-height: 44px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   button:active { transform: translateY(1px); }
   button:disabled { opacity: 0.45; }
-  button.primary { background: var(--yellow); color: #000; border-color: var(--yellow); }
+  button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  button.primary:active { background: var(--blue2); }
   button.big { font-size: 20px; min-height: 60px; padding: 12px 10px; white-space: nowrap; }
   button.ghost { background: transparent; }
   button.small { min-height: 36px; padding: 6px 10px; font-size: 14px; }
   .status { font-size: 14px; color: var(--dim); min-height: 20px; }
   .status b { color: var(--text); }
   .bar { height: 6px; background: var(--card2); border-radius: 4px; overflow: hidden; margin-top: 8px; }
-  .bar i { display: block; height: 100%; width: 0; background: var(--yellow); transition: width .2s; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--blue), var(--violet)); transition: width .2s; }
   .now { min-height: 120px; display: flex; flex-direction: column; justify-content: center; }
   .badge { display: inline-block; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 99px; letter-spacing: .02em; }
-  .b-listen { background: rgba(89,168,255,.15); color: var(--blue); }
-  .b-say { background: rgba(51,209,122,.15); color: var(--green); }
+  .b-listen { background: rgba(61,123,255,.16); color: var(--blue-soft); }
+  .b-say { background: rgba(47,214,155,.15); color: var(--green); }
   .b-idle { background: var(--card2); color: var(--dim); }
-  .nowtext { font-size: 24px; line-height: 1.3; font-weight: 650; margin-top: 8px; }
+  .ctx { color: var(--dim); font-size: 16px; line-height: 1.35; margin: 10px 4px; }
+  .ctx small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); margin-bottom: 2px; }
+  .ctx:empty { display: none; }
+  .curline { font-size: 23px; line-height: 1.3; font-weight: 700; color: #fff; padding: 12px 14px; border-radius: 12px;
+    background: rgba(61,123,255,.16); box-shadow: inset 4px 0 0 var(--blue); transition: background .15s, box-shadow .15s; }
+  .curline.say { background: rgba(47,214,155,.14); box-shadow: inset 4px 0 0 var(--green); }
+  .curline.idle { background: var(--card2); box-shadow: inset 4px 0 0 var(--line); color: var(--text); }
   .turn { height: 5px; background: var(--card2); border-radius: 3px; margin-top: 10px; overflow: hidden; }
   .turn i { display: block; height: 100%; width: 0; background: var(--green); }
   .controls { display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 8px; margin-top: 12px; }
@@ -48,7 +55,7 @@
   ol.lines { margin: 0; padding: 0; list-style: none; counter-reset: ln; }
   ol.lines li { counter-increment: ln; display: flex; gap: 10px; padding: 9px 8px; border-radius: 8px; cursor: pointer; }
   ol.lines li::before { content: counter(ln); color: var(--dim); font-size: 13px; min-width: 18px; text-align: right; padding-top: 2px; }
-  ol.lines li.cur { background: var(--card2); }
+  ol.lines li.cur { background: rgba(61,123,255,.14); box-shadow: inset 3px 0 0 var(--blue); }
   ol.lines li.done-no { color: var(--dim); }
   ol.lines li .wait { color: var(--dim); font-size: 12px; margin-left: auto; white-space: nowrap; }
   details > summary { cursor: pointer; font-weight: 700; list-style: none; display: flex; justify-content: space-between; align-items: center; }
@@ -62,17 +69,17 @@
   select { font: inherit; font-size: 16px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
   .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   .seg button { flex: 1; border: 0; border-radius: 0; background: transparent; font-size: 14px; min-height: 40px; padding: 6px 4px; }
-  .seg button.on { background: var(--yellow); color: #000; }
+  .seg button.on { background: var(--blue); color: #fff; }
   .help { font-size: 13px; color: var(--dim); margin-top: 6px; }
-  .tip { border-color: #3a3200; background: #1a1700; }
-  .tip b { color: var(--yellow); }
+  .tip { border-color: rgba(61,123,255,.35); background: rgba(61,123,255,.07); }
+  .tip b { color: var(--blue-soft); }
   .scripts .item { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-top: 1px solid var(--line); }
   .scripts .item:first-child { border-top: 0; }
   .scripts .item .t { flex: 1; min-width: 0; cursor: pointer; }
   .scripts .item .t div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .scripts .item .t small { color: var(--dim); }
-  .scripts .item.cur .t div { color: var(--yellow); }
-  .ok { color: var(--green); } .warn { color: var(--yellow); } .err { color: var(--red); }
+  .scripts .item.cur .t div { color: var(--blue-soft); }
+  .ok { color: var(--green); } .warn { color: var(--warn); } .err { color: var(--red); }
   .diag { font-size: 12px; color: var(--dim); white-space: pre-wrap; }
   .hide { display: none !important; }
   .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -113,8 +120,10 @@
 
   <section class="card" id="playerCard">
     <div class="now">
-      <div><span class="badge b-idle" id="badge">Waiting for a script</span> <span class="ver" id="lineNo"></span></div>
-      <div class="nowtext" id="nowText">Paste a script above.</div>
+      <div class="row" style="justify-content:space-between"><span class="badge b-idle" id="badge">Waiting for a script</span><span class="ver" id="lineNo"></span></div>
+      <div class="ctx" id="prevText"></div>
+      <div class="curline idle" id="nowText">Paste a script above.</div>
+      <div class="ctx" id="nextText"></div>
       <div class="turn"><i id="turnBar"></i></div>
     </div>
     <input class="seek" id="seek" type="range" min="0" max="1000" value="0" step="1" disabled>
@@ -208,7 +217,7 @@
 <script type="module">
 import { scriptToLines, speakable } from './app/tts.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const MODELS = {
   kokoro: { key: 'kokoro', kind: 'kokoro', size: 92361271, parts: ["models/kokoro-00.bin", "models/kokoro-01.bin", "models/kokoro-02.bin", "models/kokoro-03.bin", "models/kokoro-04.bin"], voices: 'voices/kokoro-voices.bin', label: 'best voices' },
   'piper-male': { key: 'piper-male', kind: 'piper', size: 63149198, parts: ["models/piper-male-00.bin", "models/piper-male-01.bin", "models/piper-male-02.bin", "models/piper-male-03.bin"], config: 'models/piper-male.json', label: 'fast voice' },
@@ -558,10 +567,17 @@ let lastSeg = -2;
 function renderNow() {
   const t = au.currentTime || 0;
   const badge = $('badge'), now = $('nowText');
+  const around = (k, cls) => {
+    const tag = (el, label, text) => { el.innerHTML = text ? `<small>${label}</small>` : ''; if (text) el.appendChild(document.createTextNode(text)); };
+    tag($('prevText'), 'Line before', k > 0 ? lines[k - 1] : '');
+    tag($('nextText'), 'Up next', lines[k + 1] || '');
+    now.className = 'curline ' + cls;
+  };
   if (!track) {
     badge.className = 'badge b-idle';
     badge.textContent = lines.length ? 'Making audio…' : 'Waiting for a script';
     now.textContent = lines.length ? (lines[0]) : 'Paste a script above.';
+    around(0, 'idle'); if (!lines.length) $('nextText').innerHTML = '';
     $('lineNo').textContent = ''; $('turnBar').style.width = '0';
     $('tCur').textContent = '0:00'; $('tDur').textContent = '0:00'; $('seek').value = 0;
     $('playBtn').textContent = '▶ Play';
@@ -573,13 +589,14 @@ function renderNow() {
   $('playBtn').textContent = au.paused ? '▶ Play' : '❚❚ Pause';
   if (i < 0) {
     badge.className = 'badge b-idle'; badge.textContent = au.paused ? 'Ready' : 'Get ready…';
-    now.textContent = lines[0] || ''; $('lineNo').textContent = ''; $('turnBar').style.width = '0';
+    now.textContent = lines[0] || ''; around(0, 'idle'); $('lineNo').textContent = ''; $('turnBar').style.width = '0';
   } else {
     const s = track.segs[i];
     const listening = t < s.voiceEnd || S.mode !== 'lines';
     badge.className = 'badge ' + (listening ? 'b-listen' : 'b-say');
     badge.textContent = listening ? '🔊 Listen' : '🎤 Your turn — say it';
     now.textContent = lines[i] || '';
+    around(i, listening ? 'listen' : 'say');
     $('lineNo').textContent = `Line ${i + 1} of ${lines.length}`;
     const left = listening ? 1 : Math.max(0, (s.end - t) / Math.max(0.01, s.end - s.voiceEnd));
     $('turnBar').style.width = listening ? '0' : (left * 100).toFixed(1) + '%';
