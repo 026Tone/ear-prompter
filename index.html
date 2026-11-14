@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ear Prompter</title>
+<link rel="icon" href="data:,">
 <style>
   :root {
     --bg: #06070b; --card: #0f1219; --card2: #161b26; --line: #232a3a; --text: #eceff6; --dim: #8b93a8; --faint: #5d667c;
@@ -84,7 +85,31 @@
   .hide { display: none !important; }
   .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .toggle input { width: 22px; height: 22px; }
+  ol.many { margin: 6px 0 0; padding: 0 0 0 22px; max-height: 240px; overflow: auto; font-size: 14px; color: var(--dim); }
+  ol.many li { padding: 3px 0; }
+  ol.many li b { color: var(--text); font-weight: 600; }
+  .alldone { display: block; font-size: 16px; font-weight: 700; color: var(--green); background: rgba(47,214,155,.12); border-radius: 10px; padding: 10px 12px; }
 </style>
+<script>
+// Let the voice use more than one of the phone's cores (see coi-sw.js). The first visit reloads the page once.
+window.__coi = new Promise(function (done) {
+  try {
+    if (window.crossOriginIsolated) return done(true);
+    if (!window.isSecureContext || !('serviceWorker' in navigator)) return done(false);
+    var failed = +localStorage.getItem('earp.coiFail') || 0;
+    if (Date.now() - failed < 7 * 864e5) return done(false);         // it didn't work on this browser lately
+    var again = function () {
+      if (sessionStorage.getItem('earp.coiReload')) { localStorage.setItem('earp.coiFail', String(Date.now())); return done(false); }
+      sessionStorage.setItem('earp.coiReload', '1');
+      location.reload();
+    };
+    navigator.serviceWorker.register('./coi-sw.js').then(function () {
+      if (navigator.serviceWorker.controller) again(); else navigator.serviceWorker.ready.then(again);
+    }, function () { done(false); });
+    setTimeout(function () { done(false); }, 8000);
+  } catch (e) { done(false); }
+});
+</script>
 </head>
 <body>
 <main>
@@ -109,6 +134,7 @@
       <strong id="scriptTitle">Your script</strong>
       <div class="row">
         <button class="small" id="newBtn">+ New script</button>
+        <button class="small" id="manyBtn">Paste many</button>
         <button class="small ghost" id="clearBtn">Clear</button>
       </div>
     </div>
@@ -116,6 +142,17 @@
     <div class="status" id="status" style="margin-top:8px"></div>
     <div class="status warn hide" id="notice" style="margin-top:6px"></div>
     <div class="bar" id="barWrap"><i id="bar"></i></div>
+  </section>
+
+  <section class="card hide" id="manyCard">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <strong>Paste many scripts</strong>
+      <button class="small ghost" id="manyClose">Cancel</button>
+    </div>
+    <textarea id="manyText" placeholder="Paste all your scripts here at once. Put a line with --- between them, number them (1. 2. 3. or #1 #2), or leave a blank line between them. Exports from Short &amp; Sweet Studio work as they are."></textarea>
+    <div class="status" id="manyStatus" style="margin-top:8px"></div>
+    <ol class="many" id="manyList"></ol>
+    <div class="row" style="margin-top:10px"><button class="primary" id="manyAdd" disabled>Add them</button></div>
   </section>
 
   <section class="card" id="playerCard">
@@ -155,6 +192,7 @@
         <div class="help" id="voiceHelp"></div>
         <div class="row" style="margin-top:8px"><button class="small" id="testVoice">Hear this voice</button></div>
       </div>
+
       <div class="set">
         <label>How it plays</label>
         <div class="seg" id="mode">
@@ -171,6 +209,15 @@
           <button data-v="18">Long</button>
           <button data-v="0">Whole sentence</button>
         </div>
+      </div>
+      <div class="set">
+        <label>Phone cores for the voice <span class="val" id="coresVal"></span></label>
+        <div class="seg" id="cores">
+          <button data-v="0">Most</button>
+          <button data-v="2">2</button>
+          <button data-v="1">1</button>
+        </div>
+        <div class="help" id="coresHelp">More cores make the audio faster. If the page ever closes by itself while making audio, pick fewer.</div>
       </div>
       <div class="set"><label>Time to say each line <span class="val" id="sayVal"></span></label>
         <input type="range" id="say" min="0.8" max="2.5" step="0.05">
@@ -196,12 +243,16 @@
       <div class="set toggle"><span>Beeps during the countdown</span><input type="checkbox" id="beeps"></div>
       <div class="set toggle"><span>Skip labels like “Hook:”, “CTA:” and [notes]</span><input type="checkbox" id="skipNotes"></div>
       <div class="set toggle"><span>Get my other saved scripts ready too</span><input type="checkbox" id="prepAll"></div>
+      <div class="set toggle"><span>Chime when everything is ready (not while a script is playing)</span><input type="checkbox" id="chime"></div>
     </details>
   </section>
 
   <section class="card scripts">
     <details id="scriptsBox" open>
       <summary><span>My scripts <span class="ver" id="scriptCount"></span></span></summary>
+      <div class="status" id="allStatus" style="margin-top:8px"></div>
+      <div class="bar hide" id="allBarWrap"><i id="allBar"></i></div>
+      <div class="row" style="margin-top:8px"><button class="small hide" id="allBtn">Make them all now</button><span class="grow"></span><button class="small ghost hide" id="delAllBtn">Delete all</button></div>
       <div id="scripts" style="margin-top:8px"></div>
     </details>
   </section>
@@ -216,8 +267,9 @@
 
 <script type="module">
 import { scriptToLines, speakable } from './app/tts.js';
+import { splitScripts } from './app/split.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const MODELS = {
   kokoro: { key: 'kokoro', kind: 'kokoro', size: 92361271, parts: ["models/kokoro-00.bin", "models/kokoro-01.bin", "models/kokoro-02.bin", "models/kokoro-03.bin", "models/kokoro-04.bin"], voices: 'voices/kokoro-voices.bin', label: 'best voices' },
   'piper-male': { key: 'piper-male', kind: 'piper', size: 63149198, parts: ["models/piper-male-00.bin", "models/piper-male-01.bin", "models/piper-male-02.bin", "models/piper-male-03.bin"], config: 'models/piper-male.json', label: 'fast voice' },
@@ -232,7 +284,7 @@ const VOICES = [
   { id: 'george', label: 'George — man, UK', engine: 'kokoro', index: 6 },
   { id: 'fast-man', label: 'Joe — man, US (fast: ready in seconds)', engine: 'piper-male' },
 ];
-const DEFAULTS = { voice: 'heart', speed: 1, mode: 'lines', chunk: 12, say: 1.3, extra: 0.5, repeat: 1, lead: 3, beeps: true, skipNotes: true, prepAll: true, tipHidden: false };
+const DEFAULTS = { voice: 'heart', speed: 1, mode: 'lines', chunk: 12, say: 1.3, extra: 0.5, repeat: 1, lead: 3, beeps: true, skipNotes: true, prepAll: true, tipHidden: false, cores: 0, chime: true };
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -261,6 +313,21 @@ let diag = { ua: navigator.userAgent, engineMs: {}, lastRun: '' };
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
 function cur() { return scripts.find(s => s.id === currentId); }
 function voice() { return VOICES.find(v => v.id === S.voice) || VOICES[0]; }
+function nameOf(s) { return (s.name && s.name.trim()) || titleOf(s.text); }
+function linesOf(s) { return s.text.trim() ? scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes }) : []; }
+function readySig(v) { return v.id + '|' + S.speed.toFixed(2) + '|' + S.chunk + '|' + (S.skipNotes ? 1 : 0); }
+function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+
+// keep the screen awake while audio is being made (iPhone stops the page when it locks)
+let wakeN = 0, wl = null;
+async function wakeSync() {
+  try {
+    if (wakeN > 0 && !wl && navigator.wakeLock && document.visibilityState === 'visible') { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); }
+    else if (wakeN <= 0 && wl) { const w = wl; wl = null; await w.release(); }
+  } catch { /* not allowed here */ }
+}
+function wake(on) { wakeN = Math.max(0, wakeN + (on ? 1 : -1)); wakeSync(); }
+document.addEventListener('visibilitychange', wakeSync);
 function saveScripts() { store.set('scripts', scripts); store.set('current', currentId); }
 function saveSettings() { store.set('settings', S); }
 function fmt(t) { t = Math.max(0, t || 0); const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + ':' + String(s).padStart(2, '0'); }
@@ -292,6 +359,16 @@ async function idbPut(key, val) {
   const d = await db(); if (!d) return;
   try { d.transaction('lines', 'readwrite').objectStore('lines').put(val, key); } catch { /* full */ }
 }
+async function idbHas(key) {
+  const d = await db(); if (!d) return false;
+  return new Promise((res) => { try { const q = d.transaction('lines').objectStore('lines').count(key); q.onsuccess = () => res(q.result > 0); q.onerror = () => res(false); } catch { res(false); } });
+}
+async function idbDel(keys) {
+  const d = await db(); if (!d || !keys.length) return;
+  try { const st = d.transaction('lines', 'readwrite').objectStore('lines'); for (const k of keys) st.delete(k); } catch { /* */ }
+}
+async function idbClear() { const d = await db(); if (!d) return; try { d.transaction('lines', 'readwrite').objectStore('lines').clear(); } catch { /* */ } }
+async function has(key) { return mem.has(key) || idbHas(key); }
 function lineKey(v, speed, text) { return v.id + '|' + speed.toFixed(2) + '|' + speakable(text); }
 async function cached(key) {
   if (mem.has(key)) return mem.get(key);
@@ -299,16 +376,27 @@ async function cached(key) {
   if (hit && hit.pcm) {
     const i16 = new Int16Array(hit.pcm); const f = new Float32Array(i16.length);
     for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
-    const v = { rate: hit.rate, pcm: f }; mem.set(key, v); return v;
+    const v = { rate: hit.rate, pcm: f }; keep(key, v); return v;
   }
   return null;
 }
-function remember(key, rate, pcm) {
-  mem.set(key, { rate, pcm });
+function keep(key, v) { mem.set(key, v); while (mem.size > 250) mem.delete(mem.keys().next().value); }
+function remember(key, rate, pcm, inMemory = true) {
+  if (inMemory) keep(key, { rate, pcm });
   const i16 = new Int16Array(pcm.length);
   for (let i = 0; i < pcm.length; i++) { const s = Math.max(-1, Math.min(1, pcm[i])); i16[i] = s < 0 ? s * 32768 : s * 32767; }
   idbPut(key, { rate, pcm: i16.buffer, t: Date.now() });
 }
+
+// ---------- how many phone cores the voice uses ----------
+// More than one needs the page to be "cross-origin isolated", which coi-sw.js (a small service worker) sets up.
+function coresWanted() {
+  if (!window.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') return 1;
+  const have = navigator.hardwareConcurrency || 4;
+  const want = +S.cores || 4;
+  return Math.max(1, Math.min(want, have, 4));
+}
+let threadsNow = 0;   // what the running engine was started with
 
 // ---------- voice engine host: a background worker, or the page itself if the frame won't allow one ----------
 let host = null, hostReady = null, pending = new Map(), seq = 0, hostKind = null;
@@ -345,7 +433,12 @@ function startHost() {
     hostReady = (async () => {
       const kinds = hostKind ? [hostKind] : ['worker', 'blob-worker', 'page'];
       for (const kind of kinds) {
-        try { host = await tryHost(kind); hostKind = kind; diag.host = kind; renderDiag(); return host; }
+        try {
+          host = await tryHost(kind); hostKind = kind; diag.host = kind;
+          threadsNow = kind === 'page' ? 1 : coresWanted();   // the page itself can't wait on other cores
+          host.post({ type: 'config', threads: threadsNow });
+          renderDiag(); try { paintCores(); } catch { /* not drawn yet */ } return host;
+        }
         catch (e) { diag.hostErrors.push(kind + ': ' + ((e && e.message) || e)); }
       }
       hostReady = null;
@@ -363,12 +456,21 @@ function onHostCrash(e) {
   host = null; hostReady = null;
   handleEngineFailure(msg);
 }
+function restartHost() {
+  for (const [, p] of pending) p.reject(new Error('restarting'));
+  pending.clear();
+  try { host && host.stop(); } catch { /* */ }
+  host = null; hostReady = null;
+  if (hostKind === 'page') hostKind = null;
+  engineState = { key: null, ready: false, loadingKey: null, failed: engineState.failed };
+}
 async function ask(msg) {
   const h = await startHost();
   const id = ++seq;
   return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); h.post(Object.assign({ id }, msg)); });
 }
 function onWorker(m) {
+  if (m.type === 'config') { threadsNow = m.threads; renderDiag(); try { paintCores(); } catch { /* */ } return; }
   if (m.type === 'progress') {
     const spec = MODELS[m.key];
     if (track && !making) return;   // the open script is already ready - don't cover that up
@@ -392,6 +494,14 @@ function onWorker(m) {
 }
 function handleEngineFailure(msg) {
   const v = voice();
+  if (threadsNow > 1) {
+    // more cores didn't work on this phone: go back to one core and try again
+    S.cores = 1; saveSettings(); paintCores();
+    diag.coresNote = `Using more cores failed here (${msg}), so the voice uses one core.`;
+    restartHost(); renderDiag(); warmEngine();
+    setTimeout(prepare, 300);
+    return;
+  }
   engineState.failed[v.engine] = msg;
   if (v.engine === 'kokoro') {
     S.voice = 'fast-man'; saveSettings(); fillVoices();
@@ -412,7 +522,7 @@ async function synthLine(v, text) {
 async function prepare() {
   const token = ++runToken;
   const s = cur();
-  lines = scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes });
+  lines = linesOf(s);
   renderLines();
   if (!lines.length) { setTrack(null); setStatus(''); renderNow(); return; }
   const v = voice();
@@ -422,8 +532,8 @@ async function prepare() {
   for (let i = 0; i < lines.length; i++) { audio[i] = await cached(keys[i]); if (!audio[i]) missing.push(i); }
   if (token !== runToken) return;
   if (missing.length) {
-    setTrack(null);
-    making = true; guard(true);
+    setTrack(null); jobStart();
+    making = true; guard(true); wake(true);
     try {
     const t0 = performance.now(); let made = 0, audioSec = 0;
     for (const i of missing) {
@@ -442,34 +552,120 @@ async function prepare() {
       markLine(i, 'ready');
     }
     const secs = (performance.now() - t0) / 1000;
-    diag.lastRun = `Made ${made} line${made === 1 ? '' : 's'} (${audioSec.toFixed(1)} s of speech) in ${secs.toFixed(1)} s — ${(secs / Math.max(audioSec, 0.1)).toFixed(2)}× real time, voice ${v.label.split(' —')[0]}`;
+    diag.lastRun = `Made ${made} line${made === 1 ? '' : 's'} (${audioSec.toFixed(1)} s of speech) in ${secs.toFixed(1)} s — ${(secs / Math.max(audioSec, 0.1)).toFixed(2)}× real time, voice ${v.label.split(' —')[0]}, ${threadsNow || 1} core${threadsNow > 1 ? 's' : ''}`;
     renderDiag();
-    } finally { if (token === runToken) { making = false; guard(false); } }
+    } finally { wake(false); if (token === runToken) { making = false; guard(false); } }
   }
   if (token !== runToken) return;
   buildTrack(audio);
   readyMsg = `<span class="ok">Ready.</span> ${lines.length} lines · ${fmt(track.duration)} with your pauses. Tap play, then open the Camera.`;
   setStatus(readyMsg);
   renderScripts();
-  if (S.prepAll) prepOthers(token);
+  if (S.prepAll || allQueued) prepOthers(token); else { renderAll(); jobDone(); }
 }
 
-/** Make the audio for the other saved scripts while the page is open, so they're ready later. */
-async function prepOthers(token) {
-  const v = voice();
-  for (const s of scripts) {
-    if (s.id === currentId || !s.text.trim()) continue;
-    const ls = scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes });
-    for (const l of ls) {
-      if (token !== runToken) return;
-      const key = lineKey(v, S.speed, l);
-      if (await cached(key)) continue;
-      try { const r = await synthLine(v, l); remember(key, r.rate, r.pcm); } catch { return; }
-    }
-    s.ready = v.id + '|' + S.speed.toFixed(2) + '|' + S.chunk;
-    saveScripts(); renderScripts();
-  }
+// ---------- the "everything is ready" chime ----------
+// iPhone only lets a page play sound it started from a tap, so the first tap plays a silent clip on the chime's own
+// audio element; later the same element can play the chime by itself.
+let jobT0 = 0, justDone = 0;
+function jobStart() { if (!jobT0) jobT0 = Date.now(); }
+function jobDone() {
+  const long = jobT0 && Date.now() - jobT0 > 8000;
+  jobT0 = 0;
+  if (!long) return;
+  justDone = Date.now(); renderAll();
+  if (S.chime && au.paused) ping();
 }
+function tones(rate, notes) {
+  const out = new Float32Array(Math.round(rate * (0.14 * notes.length + 0.5)));
+  notes.forEach((f, k) => {
+    const at = Math.round(rate * 0.14 * k), n = Math.round(rate * 0.55);
+    for (let i = 0; i < n && at + i < out.length; i++) { const env = Math.min(1, i / (rate * 0.006)) * Math.exp(-i / (rate * 0.16)); out[at + i] += 0.3 * env * Math.sin(2 * Math.PI * f * i / rate); }
+  });
+  return out;
+}
+let chimeEl = null, chimeSrc = '', silentSrc = '';
+function unlockChime() {
+  if (chimeEl || !au.paused) return;     // never start a second sound while a script plays
+  try {
+    chimeEl = new Audio(); chimeEl.setAttribute('playsinline', '');
+    silentSrc = URL.createObjectURL(new Blob([wav(new Float32Array(2400), 24000)], { type: 'audio/wav' }));
+    chimeSrc = URL.createObjectURL(new Blob([wav(tones(24000, [1046.5, 1318.5, 1568]), 24000)], { type: 'audio/wav' }));
+    chimeEl.src = silentSrc;
+    const p = chimeEl.play(); if (p && p.catch) p.catch(() => { chimeEl = null; });
+  } catch { chimeEl = null; }
+}
+for (const ev of ['touchend', 'click']) document.addEventListener(ev, unlockChime, { passive: true });
+function ping() {
+  try {
+    if (!chimeEl) return;
+    chimeEl.pause(); chimeEl.src = chimeSrc; chimeEl.currentTime = 0;
+    const p = chimeEl.play(); if (p && p.catch) p.catch(() => { /* not allowed: the green note still shows */ });
+  } catch { /* */ }
+}
+
+/** Make the audio for every other saved script, one after another, so they're all ready to play later. */
+let allQueued = false;                       // "Make them all now" was tapped
+let all = { running: false, done: 0, total: 0, err: '' };
+async function prepOthers(token) {
+  const v = voice(), sig = readySig(v);
+  const todo = scripts.filter(s => s.id !== currentId && s.text.trim() && s.ready !== sig).sort((a, b) => b.updated - a.updated);
+  all = { running: !!todo.length, done: 0, total: todo.length, err: '' };
+  renderAll();
+  if (!todo.length) { allQueued = false; jobDone(); return; }
+  wake(true); jobStart();
+  const t0 = performance.now(); let audioSec = 0, made = 0;
+  try {
+    for (const s of todo) {
+      for (const l of linesOf(s)) {
+        if (token !== runToken) return;
+        const key = lineKey(v, S.speed, l);
+        if (await has(key)) continue;
+        try { const r = await synthLine(v, l); remember(key, r.rate, r.pcm, false); audioSec += r.pcm.length / r.rate; made++; }
+        catch (e) { if (token === runToken) { all.err = e.message; jobT0 = 0; } return; }
+        renderAll();
+      }
+      s.ready = sig; all.done++;
+      saveScripts(); renderScripts(); renderAll();
+    }
+    allQueued = false;
+    jobDone();
+    if (made) { const secs = (performance.now() - t0) / 1000; diag.lastAll = `Made ${all.done} other scripts (${made} lines, ${Math.round(audioSec)} s of speech) in ${Math.round(secs)} s — ${(secs / Math.max(audioSec, 0.1)).toFixed(2)}× real time`; renderDiag(); }
+  } finally { wake(false); all.running = false; renderAll(); }
+}
+function notReady() { const sig = readySig(voice()); return scripts.filter(s => s.text.trim() && (s.id === currentId ? !track : s.ready !== sig)); }
+function renderAll() {
+  const st = $('allStatus'), btn = $('allBtn');
+  const n = scripts.filter(s => s.text.trim()).length;
+  $('delAllBtn').classList.toggle('hide', n < 2);
+  if (all.running) {
+    const pct = all.total ? all.done / all.total : 0;
+    st.innerHTML = `Getting your scripts ready: <b>${all.done}</b> of ${all.total} done. Keep this page open.`;
+    $('allBarWrap').classList.remove('hide'); $('allBar').style.width = Math.round(pct * 100) + '%';
+    btn.classList.add('hide');
+    return;
+  }
+  $('allBarWrap').classList.add('hide');
+  const left = notReady().filter(s => s.id !== currentId).length;
+  if (all.err) st.innerHTML = `<span class="err">Stopped: ${esc(all.err)}</span>`;
+  else if (n >= 2 && !left && track) st.innerHTML = Date.now() - justDone < 10 * 60e3 ? `<span class="alldone">✓ All ${n} scripts are ready.</span>` : `<span class="ok">All ${n} scripts are ready.</span>`;
+  else st.innerHTML = '';
+  btn.textContent = left === 1 ? 'Make the other script now' : `Make all ${left} now`;
+  btn.classList.toggle('hide', !left);
+}
+$('allBtn').onclick = () => {
+  allQueued = true; all.err = '';
+  if (track && !making) prepOthers(runToken);
+  else { $('allStatus').textContent = 'Starting right after the open script is ready…'; $('allBtn').classList.add('hide'); }
+};
+$('delAllBtn').onclick = () => {
+  const b = $('delAllBtn');
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap to delete all'; b.classList.add('err'); setTimeout(() => { b.dataset.sure = ''; b.textContent = 'Delete all'; b.classList.remove('err'); }, 3000); return; }
+  b.dataset.sure = ''; b.textContent = 'Delete all'; b.classList.remove('err');
+  scripts = [{ id: uid(), text: '', updated: Date.now() }]; currentId = scripts[0].id;
+  mem.clear(); idbClear();
+  saveScripts(); loadEditor(); renderScripts(); prepare();
+};
 
 // ---------- building one audio file with pauses (one file keeps playing when you leave Safari) ----------
 function beep(rate, freq, dur) {
@@ -537,7 +733,7 @@ function setTrack(tr) {
   if (prevSeg > 0 && tr.segs[prevSeg]) { try { au.currentTime = tr.segs[prevSeg].start; } catch { /* */ } if (wasPlaying) play(); }
   try {
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: titleOf(cur().text), artist: 'Ear Prompter' });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: nameOf(cur()), artist: 'Ear Prompter' });
       navigator.mediaSession.setActionHandler('play', () => play());
       navigator.mediaSession.setActionHandler('pause', () => au.pause());
       navigator.mediaSession.setActionHandler('previoustrack', () => back());
@@ -643,18 +839,19 @@ function renderScripts() {
   for (const s of list) {
     const div = document.createElement('div');
     div.className = 'item' + (s.id === currentId ? ' cur' : '');
-    const nLines = s.text.trim() ? scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes }).length : 0;
-    const ready = s.id === currentId ? (track ? 'ready' : (nLines ? 'making' : '')) : (s.ready === v.id + '|' + S.speed.toFixed(2) + '|' + S.chunk ? 'ready' : '');
+    const nLines = linesOf(s).length;
+    const ready = s.id === currentId ? (track ? 'ready' : (nLines ? 'making' : '')) : (s.ready === readySig(v) ? 'ready' : '');
     div.innerHTML = `<div class="t"><div></div><small>${nLines} lines${ready === 'ready' ? ' · <span class="ok">ready</span>' : ready === 'making' ? ' · making' : ''}</small></div>`;
-    div.querySelector('.t div').textContent = titleOf(s.text);
+    div.querySelector('.t div').textContent = nameOf(s);
     div.querySelector('.t').onclick = () => openScript(s.id);
     const del = document.createElement('button'); del.className = 'small ghost'; del.textContent = 'Delete';
     del.onclick = () => {
       if (del.dataset.sure) {
+        idbDel(linesOf(s).map(l => lineKey(v, S.speed, l)));
         scripts = scripts.filter(x => x.id !== s.id);
         if (!scripts.length) scripts = [{ id: uid(), text: '', updated: Date.now() }];
         if (s.id === currentId) { currentId = scripts[0].id; loadEditor(); prepare(); }
-        saveScripts(); renderScripts();
+        saveScripts(); renderScripts(); renderAll();
       } else { del.dataset.sure = '1'; del.textContent = 'Tap to delete'; del.classList.add('err'); setTimeout(() => { del.dataset.sure = ''; del.textContent = 'Delete'; del.classList.remove('err'); }, 3000); }
     };
     div.appendChild(del);
@@ -667,16 +864,20 @@ function renderDiag() {
   d.push(`Voice: ${voice().label}`);
   for (const [k, v] of Object.entries(diag.engineMs)) d.push(`Loaded ${MODELS[k].label} in ${v}`);
   if (diag.lastRun) d.push(diag.lastRun);
+  if (diag.lastAll) d.push(diag.lastAll);
+  d.push(`Phone cores for the voice: ${threadsNow || '…'} of ${navigator.hardwareConcurrency || '?'}${window.crossOriginIsolated ? '' : ' (more cores not allowed on this load)'}`);
+  if (diag.coresNote) d.push(diag.coresNote);
   if (diag.crashNote) d.push(diag.crashNote);
   for (const [k, v] of Object.entries(engineState.failed)) d.push(`Problem with ${MODELS[k].label}: ${v}`);
   d.push(`Saving on this phone: ${diag.storage || 'checking…'}`);
   d.push(`Voice engine runs: ${diag.host === 'page' ? 'in the page' : diag.host ? 'in the background (' + diag.host + ')' : 'starting…'}`);
+  d.push(`Screen kept awake while making audio: ${'wakeLock' in navigator ? 'yes' : 'not on this browser'}`);
   if (diag.hostErrors.length) d.push('Engine notes: ' + diag.hostErrors.join(' | '));
   d.push(diag.ua);
   $('diag').textContent = d.join('\n');
 }
 function loadEditor() {
-  const s = cur(); $('text').value = s.text; $('scriptTitle').textContent = s.text.trim() ? titleOf(s.text) : 'Your script';
+  const s = cur(); $('text').value = s.text; $('scriptTitle').textContent = s.text.trim() ? nameOf(s) : 'Your script';
 }
 function openScript(id) {
   if (id === currentId) return;
@@ -710,6 +911,16 @@ function rangeInit(id, key, label) {
   show();
 }
 function checkInit(id, key) { const el = $(id); el.checked = !!S[key]; el.onchange = () => { S[key] = el.checked; saveSettings(); changed(key); }; }
+function paintCores() {
+  $('cores').querySelectorAll('button').forEach(b => b.classList.toggle('on', String(+S.cores || 0) === b.dataset.v));
+  const iso = !!window.crossOriginIsolated;
+  $('coresVal').textContent = !iso ? '1 (this browser allows only one)' : `using ${threadsNow || coresWanted()}`;
+  $('cores').querySelectorAll('button').forEach(b => { b.disabled = !iso; });
+}
+$('cores').querySelectorAll('button').forEach(b => b.onclick = () => {
+  S.cores = +b.dataset.v; saveSettings();
+  if (coresWanted() !== threadsNow) { restartHost(); paintCores(); renderDiag(); warmEngine(); prepare(); } else paintCores();
+});
 let rebuildTimer = 0;
 function changed(key) {
   if (['say', 'extra', 'mode', 'repeat', 'lead', 'beeps'].includes(key)) {
@@ -717,7 +928,7 @@ function changed(key) {
     rebuildTimer = setTimeout(() => prepare(), 150); // audio lines are kept, only the pauses change
   } else if (['voice', 'speed', 'chunk', 'skipNotes'].includes(key)) {
     if (key === 'voice') { fillVoices(); warmEngine(); }
-    renderDiag(); prepare();
+    renderDiag(); renderAll(); prepare();
   } else if (key === 'prepAll' && S.prepAll && track) prepOthers(runToken);
 }
 $('voice').onchange = () => { S.voice = $('voice').value; saveSettings(); changed('voice'); };
@@ -746,9 +957,9 @@ function warmEngine() {
 let editTimer = 0;
 $('text').addEventListener('input', () => {
   const s = cur(); s.text = $('text').value; s.updated = Date.now(); s.ready = '';
-  $('scriptTitle').textContent = s.text.trim() ? titleOf(s.text) : 'Your script';
+  $('scriptTitle').textContent = s.text.trim() ? nameOf(s) : 'Your script';
   saveScripts();
-  lines = scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes }); renderLines();
+  lines = linesOf(s); renderLines();
   clearTimeout(editTimer); editTimer = setTimeout(() => { prepare(); renderScripts(); }, 1200);
 });
 $('newBtn').onclick = () => {
@@ -763,20 +974,61 @@ $('clearBtn').onclick = () => {
   b.dataset.sure = ''; b.textContent = 'Clear';
   const s = cur(); s.text = ''; s.updated = Date.now(); saveScripts(); loadEditor(); prepare(); renderScripts(); $('text').focus();
 };
+// ---------- paste many scripts at once ----------
+let manyFound = [], manyTimer = 0;
+function renderMany() {
+  const raw = $('manyText').value;
+  manyFound = splitScripts(raw);
+  const n = manyFound.length, ol = $('manyList');
+  $('manyStatus').innerHTML = n ? `Found <b>${n}</b> script${n === 1 ? '' : 's'}. Check the list, then add them.` : (raw.trim() ? 'No scripts found yet.' : '');
+  ol.innerHTML = '';
+  for (const it of manyFound) {
+    const li = document.createElement('li');
+    const nl = scriptToLines(it.text, { maxWords: +S.chunk, skipNotes: S.skipNotes }).length;
+    li.innerHTML = '<b></b> · ' + nl + ' lines';
+    li.firstChild.textContent = it.name || titleOf(it.text);
+    ol.appendChild(li);
+  }
+  $('manyAdd').disabled = !n;
+  $('manyAdd').textContent = n ? `Add ${n} script${n === 1 ? '' : 's'}` : 'Add them';
+}
+function closeMany() { $('manyCard').classList.add('hide'); $('manyText').value = ''; renderMany(); }
+$('manyBtn').onclick = () => { $('manyCard').classList.remove('hide'); $('manyCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => $('manyText').focus(), 300); };
+$('manyClose').onclick = closeMany;
+$('manyText').addEventListener('input', () => { clearTimeout(manyTimer); manyTimer = setTimeout(renderMany, 250); });
+$('manyAdd').onclick = () => {
+  renderMany();
+  if (!manyFound.length) return;
+  const now = Date.now(), n = manyFound.length;
+  const added = manyFound.map((it, i) => ({ id: uid(), name: it.name || '', text: it.text, updated: now + (n - i) }));   // first pasted = top of the list
+  scripts = scripts.filter(s => s.text.trim()).concat(added);
+  currentId = added[0].id; allQueued = true;
+  saveScripts(); closeMany(); loadEditor(); renderScripts(); renderAll(); prepare();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
 $('tipClose').onclick = () => { S.tipHidden = true; saveSettings(); $('tip').classList.add('hide'); };
 
 // ---------- crash guard ----------
 // If Safari closes the page while the most natural voices are working (out of memory), the page reloads with
 // nothing to say why. A flag set while making audio and cleared when done or when you leave the page tells us.
 function guard(on) {
-  if (on && voice().engine === 'kokoro') store.set('inflight', { engine: 'kokoro', t: Date.now() });
+  if (on && (voice().engine === 'kokoro' || threadsNow > 1)) store.set('inflight', { engine: voice().engine, threads: threadsNow, t: Date.now() });
   else store.set('inflight', null);
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) store.set('inflight', null); else if (making) guard(true); });
 window.addEventListener('pagehide', () => store.set('inflight', null));
 (function checkLastRun() {
   const f = store.get('inflight', null);
-  if (f && f.engine === 'kokoro' && voice().engine === 'kokoro') {
+  if (f && (f.threads || 1) > 1) {
+    // first time: fewer cores (more cores use more memory)
+    store.set('inflight', null);
+    S.cores = f.threads > 2 ? 2 : 1; saveSettings();
+    diag.crashNote = `The page closed itself while making audio with ${f.threads} cores, so it now uses ${S.cores}.`;
+    const nb = document.getElementById('notice');
+    nb.textContent = `Last time the page closed itself while making audio, which usually means the phone ran out of memory. It now uses ${S.cores === 1 ? 'one core' : 'fewer cores'} for the voice. You can change this in Settings.`;
+    nb.classList.remove('hide');
+  } else if (f && f.engine === 'kokoro' && voice().engine === 'kokoro') {
     const n = store.get('crashes', 0) + 1; store.set('crashes', n); store.set('inflight', null);
     S.voice = 'fast-man'; saveSettings();
     diag.crashNote = `The page closed itself while making audio with the most natural voices (${n}×), so it switched to the fast voice.`;
@@ -787,6 +1039,7 @@ window.addEventListener('pagehide', () => store.set('inflight', null));
 })();
 
 // ---------- start ----------
+await (window.__coi || Promise.resolve(false));
 $('ver').textContent = 'v' + VERSION;
 if (S.tipHidden) $('tip').classList.add('hide');
 fillVoices();
@@ -797,8 +1050,9 @@ rangeInit('say', 'say', v => v.toFixed(2) + '×');
 rangeInit('extra', 'extra', v => v.toFixed(1) + ' s');
 rangeInit('speed', 'speed', v => v.toFixed(2) + '×');
 rangeInit('lead', 'lead', v => v + ' s');
-checkInit('beeps', 'beeps'); checkInit('skipNotes', 'skipNotes'); checkInit('prepAll', 'prepAll');
-loadEditor(); renderScripts(); renderNow();
+checkInit('beeps', 'beeps'); checkInit('skipNotes', 'skipNotes'); checkInit('prepAll', 'prepAll'); checkInit('chime', 'chime');
+paintCores();
+loadEditor(); renderScripts(); renderAll(); renderNow();
 (async () => {
   let ok = false;
   try { const c = await caches.open('ear-prompter-files-v1'); ok = !!c; } catch { ok = false; }
@@ -808,7 +1062,7 @@ loadEditor(); renderScripts(); renderNow();
 })();
 warmEngine();
 prepare();
-window.__ear = { get trackVersion() { return trackVersion; }, get track() { return track; }, get lines() { return lines; }, get engine() { return engineState; }, prepare, VERSION };
+window.__ear = { get trackVersion() { return trackVersion; }, get track() { return track; }, get lines() { return lines; }, get engine() { return engineState; }, get threads() { return threadsNow; }, get all() { return all; }, get scripts() { return scripts; }, get diag() { return diag; }, prepare, VERSION };
 </script>
 </body>
 </html>

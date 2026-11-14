@@ -3,6 +3,7 @@
 import * as ort from './ort.wasm.bundle.min.js';
 import * as T from './tts.js';
 
+// One core unless the page says more (it can only when the page is cross-origin isolated). Read once, at the first voice load.
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.proxy = false;
 ort.env.wasm.wasmPaths = { wasm: new URL('./ort-wasm-simd-threaded.wasm', import.meta.url).href };
@@ -110,7 +111,11 @@ export function setPost(fn) { post = fn; }
 export async function handle(m) {
   m = m || {};
   try {
-    if (m.type === 'init') {
+    if (m.type === 'config') {
+      const n = Math.max(1, Math.min(8, Math.floor(+m.threads || 1)));
+      ort.env.wasm.numThreads = (n > 1 && typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated) ? n : 1;
+      post({ type: 'config', threads: ort.env.wasm.numThreads });
+    } else if (m.type === 'init') {
       await initText();
       post({ type: 'text-ready' });
     } else if (m.type === 'engine') {
