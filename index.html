@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ear Prompter</title>
+<style>
+  :root {
+    --bg: #0b0d10; --card: #151920; --card2: #1c212a; --line: #2a303b; --text: #f2f4f7; --dim: #9aa4b2;
+    --yellow: #ffd400; --blue: #59a8ff; --green: #33d17a; --red: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+  main { max-width: 640px; margin: 0 auto; padding: 14px 14px 60px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 2px 12px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { background: var(--yellow); color: #000; padding: 0 6px; border-radius: 4px; }
+  .ver { color: var(--dim); font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  textarea { width: 100%; min-height: 150px; resize: vertical; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px; font: inherit; font-size: 16px; }
+  button { font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--card2); color: var(--text); border-radius: 10px;
+    padding: 10px 14px; min-height: 44px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.45; }
+  button.primary { background: var(--yellow); color: #000; border-color: var(--yellow); }
+  button.big { font-size: 20px; min-height: 60px; padding: 12px 10px; white-space: nowrap; }
+  button.ghost { background: transparent; }
+  button.small { min-height: 36px; padding: 6px 10px; font-size: 14px; }
+  .status { font-size: 14px; color: var(--dim); min-height: 20px; }
+  .status b { color: var(--text); }
+  .bar { height: 6px; background: var(--card2); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--yellow); transition: width .2s; }
+  .now { min-height: 120px; display: flex; flex-direction: column; justify-content: center; }
+  .badge { display: inline-block; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 99px; letter-spacing: .02em; }
+  .b-listen { background: rgba(89,168,255,.15); color: var(--blue); }
+  .b-say { background: rgba(51,209,122,.15); color: var(--green); }
+  .b-idle { background: var(--card2); color: var(--dim); }
+  .nowtext { font-size: 24px; line-height: 1.3; font-weight: 650; margin-top: 8px; }
+  .turn { height: 5px; background: var(--card2); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+  .turn i { display: block; height: 100%; width: 0; background: var(--green); }
+  .controls { display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 8px; margin-top: 12px; }
+  .time { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  input[type=range].seek { width: 100%; margin-top: 10px; }
+  ol.lines { margin: 0; padding: 0; list-style: none; counter-reset: ln; }
+  ol.lines li { counter-increment: ln; display: flex; gap: 10px; padding: 9px 8px; border-radius: 8px; cursor: pointer; }
+  ol.lines li::before { content: counter(ln); color: var(--dim); font-size: 13px; min-width: 18px; text-align: right; padding-top: 2px; }
+  ol.lines li.cur { background: var(--card2); }
+  ol.lines li.done-no { color: var(--dim); }
+  ol.lines li .wait { color: var(--dim); font-size: 12px; margin-left: auto; white-space: nowrap; }
+  details > summary { cursor: pointer; font-weight: 700; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::after { content: "+"; color: var(--dim); font-size: 22px; font-weight: 400; }
+  details[open] > summary::after { content: "−"; }
+  .set { margin-top: 14px; }
+  .set label { display: block; font-size: 14px; color: var(--dim); margin-bottom: 6px; }
+  .set .val { float: right; color: var(--text); font-weight: 600; }
+  .set select, .set input[type=range] { width: 100%; }
+  select { font: inherit; font-size: 16px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; border-radius: 0; background: transparent; font-size: 14px; min-height: 40px; padding: 6px 4px; }
+  .seg button.on { background: var(--yellow); color: #000; }
+  .help { font-size: 13px; color: var(--dim); margin-top: 6px; }
+  .tip { border-color: #3a3200; background: #1a1700; }
+  .tip b { color: var(--yellow); }
+  .scripts .item { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-top: 1px solid var(--line); }
+  .scripts .item:first-child { border-top: 0; }
+  .scripts .item .t { flex: 1; min-width: 0; cursor: pointer; }
+  .scripts .item .t div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scripts .item .t small { color: var(--dim); }
+  .scripts .item.cur .t div { color: var(--yellow); }
+  .ok { color: var(--green); } .warn { color: var(--yellow); } .err { color: var(--red); }
+  .diag { font-size: 12px; color: var(--dim); white-space: pre-wrap; }
+  .hide { display: none !important; }
+  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .toggle input { width: 22px; height: 22px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span>Ear</span> Prompter</h1>
+    <div class="ver" id="ver"></div>
+  </header>
+
+  <div class="card tip" id="tip">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div class="grow">
+        <b>Before you film</b><br>
+        On your iPhone go to <b>Settings → Camera → Record Sound</b> and turn on <b>Allow Audio Playback</b>. Without it, the Camera app pauses this audio the moment you hit record.<br>
+        Keep this page open in Safari, start playing, then switch to the Camera. The audio keeps going in your earbud.
+      </div>
+      <button class="small ghost" id="tipClose" aria-label="Hide tip">Hide</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <strong id="scriptTitle">Your script</strong>
+      <div class="row">
+        <button class="small" id="newBtn">+ New script</button>
+        <button class="small ghost" id="clearBtn">Clear</button>
+      </div>
+    </div>
+    <textarea id="text" placeholder="Paste your script here. It gets split into short lines, read into your ear one at a time, with a pause after each line so you can say it."></textarea>
+    <div class="status" id="status" style="margin-top:8px"></div>
+    <div class="status warn hide" id="notice" style="margin-top:6px"></div>
+    <div class="bar" id="barWrap"><i id="bar"></i></div>
+  </section>
+
+  <section class="card" id="playerCard">
+    <div class="now">
+      <div><span class="badge b-idle" id="badge">Waiting for a script</span> <span class="ver" id="lineNo"></span></div>
+      <div class="nowtext" id="nowText">Paste a script above.</div>
+      <div class="turn"><i id="turnBar"></i></div>
+    </div>
+    <input class="seek" id="seek" type="range" min="0" max="1000" value="0" step="1" disabled>
+    <div class="time"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
+    <div class="controls">
+      <button id="backBtn" disabled>◀ Line</button>
+      <button id="playBtn" class="primary big" disabled>▶ Play</button>
+      <button id="nextBtn" disabled>Line ▶</button>
+    </div>
+    <div class="row" style="margin-top:8px;justify-content:center">
+      <button class="small ghost" id="restartBtn" disabled>↺ From the top</button>
+    </div>
+    <audio id="audio" preload="auto" playsinline></audio>
+  </section>
+
+  <section class="card">
+    <details id="linesBox" open>
+      <summary><span>Lines <span class="ver" id="lineCount"></span></span></summary>
+      <ol class="lines" id="lines" style="margin-top:10px"></ol>
+    </details>
+  </section>
+
+  <section class="card">
+    <details id="setBox">
+      <summary>Settings</summary>
+      <div class="set">
+        <label>Voice</label>
+        <select id="voice"></select>
+        <div class="help" id="voiceHelp"></div>
+        <div class="row" style="margin-top:8px"><button class="small" id="testVoice">Hear this voice</button></div>
+      </div>
+      <div class="set">
+        <label>How it plays</label>
+        <div class="seg" id="mode">
+          <button data-v="lines">Line, then my turn</button>
+          <button data-v="straight">Straight through</button>
+        </div>
+        <div class="help">“Line, then my turn” leaves a pause after every line, sized to the line, so you can say it.</div>
+      </div>
+      <div class="set">
+        <label>Line length</label>
+        <div class="seg" id="chunk">
+          <button data-v="7">Short</button>
+          <button data-v="12">Medium</button>
+          <button data-v="18">Long</button>
+          <button data-v="0">Whole sentence</button>
+        </div>
+      </div>
+      <div class="set"><label>Time to say each line <span class="val" id="sayVal"></span></label>
+        <input type="range" id="say" min="0.8" max="2.5" step="0.05">
+        <div class="help">How long your turn lasts, compared with how long the voice took to say the line. You talk slower than the voice? Turn it up.</div>
+      </div>
+      <div class="set"><label>Extra breath after your turn <span class="val" id="extraVal"></span></label>
+        <input type="range" id="extra" min="0" max="3" step="0.1">
+      </div>
+      <div class="set"><label>Voice speed <span class="val" id="speedVal"></span></label>
+        <input type="range" id="speed" min="0.7" max="1.3" step="0.05">
+        <div class="help">Changing the speed makes the audio again.</div>
+      </div>
+      <div class="set">
+        <label>Hear each line</label>
+        <div class="seg" id="repeat">
+          <button data-v="1">Once</button>
+          <button data-v="2">Twice</button>
+        </div>
+      </div>
+      <div class="set"><label>Countdown before the first line <span class="val" id="leadVal"></span></label>
+        <input type="range" id="lead" min="0" max="10" step="1">
+      </div>
+      <div class="set toggle"><span>Beeps during the countdown</span><input type="checkbox" id="beeps"></div>
+      <div class="set toggle"><span>Skip labels like “Hook:”, “CTA:” and [notes]</span><input type="checkbox" id="skipNotes"></div>
+      <div class="set toggle"><span>Get my other saved scripts ready too</span><input type="checkbox" id="prepAll"></div>
+    </details>
+  </section>
+
+  <section class="card scripts">
+    <details id="scriptsBox" open>
+      <summary><span>My scripts <span class="ver" id="scriptCount"></span></span></summary>
+      <div id="scripts" style="margin-top:8px"></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>About this phone</summary>
+      <div class="diag" id="diag" style="margin-top:10px"></div>
+    </details>
+  </section>
+</main>
+
+<script type="module">
+import { scriptToLines, speakable } from './app/tts.js';
+
+const VERSION = '1.0.0';
+const MODELS = {
+  kokoro: { key: 'kokoro', kind: 'kokoro', size: 92361271, parts: ["models/kokoro-00.bin", "models/kokoro-01.bin", "models/kokoro-02.bin", "models/kokoro-03.bin", "models/kokoro-04.bin"], voices: 'voices/kokoro-voices.bin', label: 'best voices' },
+  'piper-male': { key: 'piper-male', kind: 'piper', size: 63149198, parts: ["models/piper-male-00.bin", "models/piper-male-01.bin", "models/piper-male-02.bin", "models/piper-male-03.bin"], config: 'models/piper-male.json', label: 'fast voice' },
+};
+const VOICES = [
+  { id: 'heart', label: 'Heart — woman, US (most natural)', engine: 'kokoro', index: 0 },
+  { id: 'bella', label: 'Bella — woman, US', engine: 'kokoro', index: 1 },
+  { id: 'michael', label: 'Michael — man, US', engine: 'kokoro', index: 2 },
+  { id: 'fenrir', label: 'Fenrir — man, US', engine: 'kokoro', index: 3 },
+  { id: 'puck', label: 'Puck — man, US', engine: 'kokoro', index: 4 },
+  { id: 'emma', label: 'Emma — woman, UK', engine: 'kokoro', index: 5 },
+  { id: 'george', label: 'George — man, UK', engine: 'kokoro', index: 6 },
+  { id: 'fast-man', label: 'Joe — man, US (fast: ready in seconds)', engine: 'piper-male' },
+];
+const DEFAULTS = { voice: 'heart', speed: 1, mode: 'lines', chunk: 12, say: 1.3, extra: 0.5, repeat: 1, lead: 3, beeps: true, skipNotes: true, prepAll: true, tipHidden: false };
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('earp.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('earp.' + k, JSON.stringify(v)); } catch { /* storage blocked */ } },
+};
+
+// ---------- state ----------
+let S = Object.assign({}, DEFAULTS, store.get('settings', {}));
+if (!VOICES.find(v => v.id === S.voice)) S.voice = DEFAULTS.voice;
+let scripts = store.get('scripts', []);
+let currentId = store.get('current', null);
+if (!scripts.length) { scripts = [{ id: uid(), text: '', updated: Date.now() }]; }
+if (!scripts.find(s => s.id === currentId)) currentId = scripts[0].id;
+
+const mem = new Map();          // line cache key -> { rate, pcm: Float32Array }
+let lines = [];                 // current lines (display text)
+let track = null;               // { url, segs, duration }
+let runToken = 0;
+let making = false;             // true while lines are being made for the open script
+let trackVersion = 0;
+let readyMsg = '';
+let engineState = { key: null, ready: false, loadingKey: null, failed: {} };
+let diag = { ua: navigator.userAgent, engineMs: {}, lastRun: '' };
+
+function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+function cur() { return scripts.find(s => s.id === currentId); }
+function voice() { return VOICES.find(v => v.id === S.voice) || VOICES[0]; }
+function saveScripts() { store.set('scripts', scripts); store.set('current', currentId); }
+function saveSettings() { store.set('settings', S); }
+function fmt(t) { t = Math.max(0, t || 0); const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + ':' + String(s).padStart(2, '0'); }
+function mb(n) { return (n / 1e6).toFixed(n > 1e7 ? 0 : 1) + ' MB'; }
+function titleOf(t) { const w = (t || '').replace(/\[[^\]]*\]/g, ' ').replace(/^\s*[A-Za-z][\w -]{0,18}:\s+/, '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 8).join(' '); return w || 'Empty script'; }
+function setStatus(html, pct) {
+  $('status').innerHTML = html || '';
+  if (pct == null) { $('barWrap').classList.add('hide'); } else { $('barWrap').classList.remove('hide'); $('bar').style.width = Math.round(pct * 100) + '%'; }
+}
+
+// ---------- line audio cache (memory + IndexedDB on this phone) ----------
+let dbp = null;
+function db() {
+  if (!dbp) dbp = new Promise((res) => {
+    try {
+      const r = indexedDB.open('ear-prompter', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('lines');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => res(null);
+    } catch { res(null); }
+  });
+  return dbp;
+}
+async function idbGet(key) {
+  const d = await db(); if (!d) return null;
+  return new Promise((res) => { try { const q = d.transaction('lines').objectStore('lines').get(key); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); } catch { res(null); } });
+}
+async function idbPut(key, val) {
+  const d = await db(); if (!d) return;
+  try { d.transaction('lines', 'readwrite').objectStore('lines').put(val, key); } catch { /* full */ }
+}
+function lineKey(v, speed, text) { return v.id + '|' + speed.toFixed(2) + '|' + speakable(text); }
+async function cached(key) {
+  if (mem.has(key)) return mem.get(key);
+  const hit = await idbGet(key);
+  if (hit && hit.pcm) {
+    const i16 = new Int16Array(hit.pcm); const f = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
+    const v = { rate: hit.rate, pcm: f }; mem.set(key, v); return v;
+  }
+  return null;
+}
+function remember(key, rate, pcm) {
+  mem.set(key, { rate, pcm });
+  const i16 = new Int16Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) { const s = Math.max(-1, Math.min(1, pcm[i])); i16[i] = s < 0 ? s * 32768 : s * 32767; }
+  idbPut(key, { rate, pcm: i16.buffer, t: Date.now() });
+}
+
+// ---------- voice engine host: a background worker, or the page itself if the frame won't allow one ----------
+let host = null, hostReady = null, pending = new Map(), seq = 0, hostKind = null;
+diag.hostErrors = [];
+function tryHost(kind) {
+  return new Promise((resolve, reject) => {
+    if (kind === 'page') {
+      import('./app/core.js').then((core) => {
+        core.setPost((m) => setTimeout(() => onWorker(m), 0));
+        resolve({ kind, post: (m) => setTimeout(() => core.handle(m), 0), stop() {} });
+      }, reject);
+      return;
+    }
+    let w;
+    try {
+      const url = new URL('./app/worker.js', import.meta.url).href;
+      w = kind === 'worker'
+        ? new Worker(url, { type: 'module' })
+        : new Worker(URL.createObjectURL(new Blob([`import ${JSON.stringify(url)};`], { type: 'text/javascript' })), { type: 'module' });
+    } catch (e) { reject(e); return; }
+    const timer = setTimeout(() => { w.terminate(); reject(new Error('no answer')); }, 30000);
+    w.onerror = (e) => { clearTimeout(timer); w.terminate(); reject(new Error((e && e.message) || 'could not start')); };
+    w.onmessage = (e) => {
+      if (!e.data || e.data.type !== 'hello') return;
+      clearTimeout(timer);
+      w.onmessage = (ev) => onWorker(ev.data);
+      w.onerror = (ev) => onHostCrash(ev);
+      resolve({ kind, post: (m) => w.postMessage(m), stop() { w.terminate(); } });
+    };
+  });
+}
+function startHost() {
+  if (!hostReady) {
+    hostReady = (async () => {
+      const kinds = hostKind ? [hostKind] : ['worker', 'blob-worker', 'page'];
+      for (const kind of kinds) {
+        try { host = await tryHost(kind); hostKind = kind; diag.host = kind; renderDiag(); return host; }
+        catch (e) { diag.hostErrors.push(kind + ': ' + ((e && e.message) || e)); }
+      }
+      hostReady = null;
+      throw new Error('The voice engine could not start here (' + diag.hostErrors.join('; ') + ')');
+    })();
+  }
+  return hostReady;
+}
+function onHostCrash(e) {
+  const msg = (e && e.message) || 'The voice engine stopped (the phone may have run out of memory).';
+  for (const [, p] of pending) p.reject(new Error(msg));
+  pending.clear();
+  engineState = { key: null, ready: false, loadingKey: null, failed: engineState.failed };
+  try { host && host.stop(); } catch { /* */ }
+  host = null; hostReady = null;
+  handleEngineFailure(msg);
+}
+async function ask(msg) {
+  const h = await startHost();
+  const id = ++seq;
+  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); h.post(Object.assign({ id }, msg)); });
+}
+function onWorker(m) {
+  if (m.type === 'progress') {
+    const spec = MODELS[m.key];
+    if (track && !making) return;   // the open script is already ready - don't cover that up
+    if (m.stage === 'starting') setStatus(`Starting the ${spec.label}…`, 1);
+    else setStatus(`${m.cached ? 'Opening' : 'Downloading'} the ${spec.label}: <b>${mb(m.loaded)}</b> of ${mb(m.total)}${m.cached ? '' : ' (first time only)'}`, m.loaded / m.total);
+    return;
+  }
+  if (m.type === 'engine-ready') {
+    engineState.key = m.key; engineState.ready = true; engineState.loadingKey = null;
+    diag.engineMs[m.key] = m.ms + ' ms' + (m.fromCache ? ' (from this phone)' : ' (downloaded)');
+    renderDiag();
+    return;
+  }
+  const p = pending.get(m.id);
+  if (m.type === 'error') {
+    if (p) { pending.delete(m.id); p.reject(new Error(m.message)); }
+    else if (m.stage === 'engine') handleEngineFailure(m.message);
+    return;
+  }
+  if (p) { pending.delete(m.id); p.resolve(m); }
+}
+function handleEngineFailure(msg) {
+  const v = voice();
+  engineState.failed[v.engine] = msg;
+  if (v.engine === 'kokoro') {
+    S.voice = 'fast-man'; saveSettings(); fillVoices();
+    setStatus(`<span class="warn">The most natural voices couldn't run on this phone (${msg}). Switched to the fast voice (Joe).</span>`);
+    setTimeout(prepare, 300);
+  } else {
+    setStatus(`<span class="err">The voice couldn't start: ${msg}</span>`);
+  }
+}
+
+// ---------- making the audio ----------
+async function synthLine(v, text) {
+  const spec = MODELS[v.engine];
+  const r = await ask({ type: 'synth', spec, voiceIndex: v.index ?? null, speed: S.speed, text });
+  return { rate: r.rate, pcm: r.samples, ms: r.ms };
+}
+
+async function prepare() {
+  const token = ++runToken;
+  const s = cur();
+  lines = scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes });
+  renderLines();
+  if (!lines.length) { setTrack(null); setStatus(''); renderNow(); return; }
+  const v = voice();
+  const keys = lines.map(l => lineKey(v, S.speed, l));
+  const audio = new Array(lines.length);
+  let missing = [];
+  for (let i = 0; i < lines.length; i++) { audio[i] = await cached(keys[i]); if (!audio[i]) missing.push(i); }
+  if (token !== runToken) return;
+  if (missing.length) {
+    setTrack(null);
+    making = true; guard(true);
+    try {
+    const t0 = performance.now(); let made = 0, audioSec = 0;
+    for (const i of missing) {
+      if (token !== runToken) return;
+      setStatus(engineState.ready && engineState.key === v.engine
+        ? `Making the audio: line <b>${made + 1}</b> of ${missing.length}. Keep this page open.`
+        : `Getting the voice ready…`, made / missing.length);
+      markLine(i, 'making');
+      let r;
+      try { r = await synthLine(v, lines[i]); }
+      catch (e) { if (token === runToken) setStatus(`<span class="err">Couldn't make line ${i + 1}: ${e.message}</span>`); return; }
+      if (token !== runToken) { remember(keys[i], r.rate, r.pcm); return; }
+      remember(keys[i], r.rate, r.pcm);
+      audio[i] = { rate: r.rate, pcm: r.pcm };
+      made++; audioSec += r.pcm.length / r.rate;
+      markLine(i, 'ready');
+    }
+    const secs = (performance.now() - t0) / 1000;
+    diag.lastRun = `Made ${made} line${made === 1 ? '' : 's'} (${audioSec.toFixed(1)} s of speech) in ${secs.toFixed(1)} s — ${(secs / Math.max(audioSec, 0.1)).toFixed(2)}× real time, voice ${v.label.split(' —')[0]}`;
+    renderDiag();
+    } finally { if (token === runToken) { making = false; guard(false); } }
+  }
+  if (token !== runToken) return;
+  buildTrack(audio);
+  readyMsg = `<span class="ok">Ready.</span> ${lines.length} lines · ${fmt(track.duration)} with your pauses. Tap play, then open the Camera.`;
+  setStatus(readyMsg);
+  renderScripts();
+  if (S.prepAll) prepOthers(token);
+}
+
+/** Make the audio for the other saved scripts while the page is open, so they're ready later. */
+async function prepOthers(token) {
+  const v = voice();
+  for (const s of scripts) {
+    if (s.id === currentId || !s.text.trim()) continue;
+    const ls = scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes });
+    for (const l of ls) {
+      if (token !== runToken) return;
+      const key = lineKey(v, S.speed, l);
+      if (await cached(key)) continue;
+      try { const r = await synthLine(v, l); remember(key, r.rate, r.pcm); } catch { return; }
+    }
+    s.ready = v.id + '|' + S.speed.toFixed(2) + '|' + S.chunk;
+    saveScripts(); renderScripts();
+  }
+}
+
+// ---------- building one audio file with pauses (one file keeps playing when you leave Safari) ----------
+function beep(rate, freq, dur) {
+  const n = Math.round(rate * dur), out = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const env = Math.min(1, i / (rate * 0.01), (n - i) / (rate * 0.02)); out[i] = 0.28 * env * Math.sin(2 * Math.PI * freq * i / rate); }
+  return out;
+}
+function fade(pcm, rate) {
+  const n = Math.min(pcm.length >> 1, Math.round(rate * 0.006)); const out = pcm.slice();
+  for (let i = 0; i < n; i++) { const g = i / n; out[i] *= g; out[out.length - 1 - i] *= g; }
+  return out;
+}
+function buildTrack(audio) {
+  const rate = audio[0].rate;
+  const parts = [], segs = [];
+  let t = 0;
+  const push = (arr) => { parts.push(arr); t += arr.length; };
+  const silence = (sec) => push(new Float32Array(Math.max(0, Math.round(sec * rate))));
+  const lead = +S.lead;
+  if (lead > 0) {
+    if (S.beeps) {
+      const nb = Math.min(3, lead), startAt = lead - nb;
+      silence(startAt);
+      for (let b = 0; b < nb; b++) { const bp = beep(rate, b === nb - 1 ? 1320 : 880, 0.09); push(bp); silence(1 - bp.length / rate); }
+    } else silence(lead);
+  }
+  audio.forEach((a, i) => {
+    const start = t / rate;
+    const clip = fade(a.pcm, rate);
+    for (let r = 0; r < (+S.repeat || 1); r++) { if (r) silence(0.45); push(clip); }
+    const voiceEnd = t / rate;
+    const lineLen = clip.length / rate;
+    if (S.mode === 'lines') silence(lineLen * S.say + S.extra);
+    else silence(/[.!?…]["')\]]*$/.test(lines[i]) ? 0.45 : 0.25);
+    segs.push({ i, start, voiceEnd, end: t / rate });
+  });
+  silence(0.6);
+  const total = new Float32Array(t); let o = 0; for (const p of parts) { total.set(p, o); o += p.length; }
+  const blob = new Blob([wav(total, rate)], { type: 'audio/wav' });
+  setTrack({ url: URL.createObjectURL(blob), segs, duration: t / rate });
+}
+function wav(x, rate) {
+  const buf = new ArrayBuffer(44 + x.length * 2), v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + x.length * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, x.length * 2, true);
+  let o = 44; for (let i = 0; i < x.length; i++, o += 2) { const s = Math.max(-1, Math.min(1, x[i])); v.setInt16(o, s < 0 ? s * 32768 : s * 32767, true); }
+  return buf;
+}
+
+// ---------- player ----------
+const au = $('audio');
+function setTrack(tr) {
+  const wasAt = au.currentTime, wasPlaying = !au.paused;
+  const prevSeg = track ? segAt(wasAt) : -1;
+  au.pause();
+  if (track && track.url) URL.revokeObjectURL(track.url);
+  track = tr; trackVersion++;
+  const has = !!tr;
+  for (const id of ['playBtn', 'backBtn', 'nextBtn', 'restartBtn', 'seek']) $(id).disabled = !has;
+  if (!has) { au.removeAttribute('src'); au.load(); renderNow(); return; }
+  au.src = tr.url; au.load();
+  $('tDur').textContent = fmt(tr.duration);
+  if (prevSeg > 0 && tr.segs[prevSeg]) { try { au.currentTime = tr.segs[prevSeg].start; } catch { /* */ } if (wasPlaying) play(); }
+  try {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: titleOf(cur().text), artist: 'Ear Prompter' });
+      navigator.mediaSession.setActionHandler('play', () => play());
+      navigator.mediaSession.setActionHandler('pause', () => au.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', () => back());
+      navigator.mediaSession.setActionHandler('nexttrack', () => next());
+    }
+  } catch { /* not allowed here */ }
+  renderNow();
+}
+function segAt(t) {
+  if (!track) return -1;
+  const s = track.segs;
+  if (!s.length || t < s[0].start) return -1;
+  for (let i = 0; i < s.length; i++) if (t < s[i].end) return i;
+  return s.length - 1;
+}
+async function play() { try { await au.play(); } catch (e) { setStatus(`<span class="err">Playback was blocked: ${e.message}. Tap Play again.</span>`); } }
+function seekTo(t) { try { au.currentTime = Math.max(0, Math.min(track.duration - 0.05, t)); } catch { /* */ } renderNow(); }
+function back() {
+  if (!track) return; const i = segAt(au.currentTime);
+  if (i < 0) return seekTo(0);
+  const s = track.segs[i];
+  seekTo(au.currentTime - s.start > 1.2 || i === 0 ? s.start : track.segs[i - 1].start);
+}
+function next() { if (!track) return; const i = segAt(au.currentTime); const n = track.segs[Math.min(track.segs.length - 1, i + 1)]; if (n) seekTo(n.start); }
+
+let lastSeg = -2;
+function renderNow() {
+  const t = au.currentTime || 0;
+  const badge = $('badge'), now = $('nowText');
+  if (!track) {
+    badge.className = 'badge b-idle';
+    badge.textContent = lines.length ? 'Making audio…' : 'Waiting for a script';
+    now.textContent = lines.length ? (lines[0]) : 'Paste a script above.';
+    $('lineNo').textContent = ''; $('turnBar').style.width = '0';
+    $('tCur').textContent = '0:00'; $('tDur').textContent = '0:00'; $('seek').value = 0;
+    $('playBtn').textContent = '▶ Play';
+    return;
+  }
+  const i = segAt(t);
+  $('tCur').textContent = fmt(t);
+  if (!seeking) $('seek').value = Math.round((t / track.duration) * 1000);
+  $('playBtn').textContent = au.paused ? '▶ Play' : '❚❚ Pause';
+  if (i < 0) {
+    badge.className = 'badge b-idle'; badge.textContent = au.paused ? 'Ready' : 'Get ready…';
+    now.textContent = lines[0] || ''; $('lineNo').textContent = ''; $('turnBar').style.width = '0';
+  } else {
+    const s = track.segs[i];
+    const listening = t < s.voiceEnd || S.mode !== 'lines';
+    badge.className = 'badge ' + (listening ? 'b-listen' : 'b-say');
+    badge.textContent = listening ? '🔊 Listen' : '🎤 Your turn — say it';
+    now.textContent = lines[i] || '';
+    $('lineNo').textContent = `Line ${i + 1} of ${lines.length}`;
+    const left = listening ? 1 : Math.max(0, (s.end - t) / Math.max(0.01, s.end - s.voiceEnd));
+    $('turnBar').style.width = listening ? '0' : (left * 100).toFixed(1) + '%';
+  }
+  if (i !== lastSeg) {
+    lastSeg = i;
+    document.querySelectorAll('#lines li').forEach((li, k) => li.classList.toggle('cur', k === i));
+  }
+}
+let raf = 0;
+function loop() { renderNow(); raf = au.paused ? 0 : requestAnimationFrame(loop); }
+au.addEventListener('play', () => { if (!raf) raf = requestAnimationFrame(loop); });
+au.addEventListener('pause', renderNow);
+au.addEventListener('ended', renderNow);
+au.addEventListener('timeupdate', () => { if (!raf) renderNow(); });
+
+let seeking = false;
+$('seek').addEventListener('input', () => { seeking = true; if (track) { const t = (+$('seek').value / 1000) * track.duration; $('tCur').textContent = fmt(t); } });
+$('seek').addEventListener('change', () => { seeking = false; if (track) seekTo((+$('seek').value / 1000) * track.duration); });
+$('playBtn').onclick = () => { if (!track) return; if (au.paused) { if (au.ended || au.currentTime >= track.duration - 0.1) seekTo(0); play(); } else au.pause(); };
+$('backBtn').onclick = back;
+$('nextBtn').onclick = next;
+$('restartBtn').onclick = () => { seekTo(0); play(); };
+
+// ---------- rendering ----------
+function renderLines() {
+  const ol = $('lines'); ol.innerHTML = '';
+  lines.forEach((l, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="grow"></span><span class="wait" id="w${i}"></span>`;
+    li.firstChild.textContent = l;
+    li.onclick = () => { if (!track) return; seekTo(track.segs[i].start); play(); };
+    ol.appendChild(li);
+  });
+  $('lineCount').textContent = lines.length ? `${lines.length}` : '';
+  lastSeg = -2;
+}
+function markLine(i, state) { const w = $('w' + i); if (w) w.textContent = state === 'making' ? 'making…' : ''; }
+function renderScripts() {
+  const box = $('scripts'); box.innerHTML = '';
+  const list = scripts.slice().sort((a, b) => b.updated - a.updated);
+  $('scriptCount').textContent = list.length > 1 ? `${list.length}` : '';
+  const v = voice();
+  for (const s of list) {
+    const div = document.createElement('div');
+    div.className = 'item' + (s.id === currentId ? ' cur' : '');
+    const nLines = s.text.trim() ? scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes }).length : 0;
+    const ready = s.id === currentId ? (track ? 'ready' : (nLines ? 'making' : '')) : (s.ready === v.id + '|' + S.speed.toFixed(2) + '|' + S.chunk ? 'ready' : '');
+    div.innerHTML = `<div class="t"><div></div><small>${nLines} lines${ready === 'ready' ? ' · <span class="ok">ready</span>' : ready === 'making' ? ' · making' : ''}</small></div>`;
+    div.querySelector('.t div').textContent = titleOf(s.text);
+    div.querySelector('.t').onclick = () => openScript(s.id);
+    const del = document.createElement('button'); del.className = 'small ghost'; del.textContent = 'Delete';
+    del.onclick = () => {
+      if (del.dataset.sure) {
+        scripts = scripts.filter(x => x.id !== s.id);
+        if (!scripts.length) scripts = [{ id: uid(), text: '', updated: Date.now() }];
+        if (s.id === currentId) { currentId = scripts[0].id; loadEditor(); prepare(); }
+        saveScripts(); renderScripts();
+      } else { del.dataset.sure = '1'; del.textContent = 'Tap to delete'; del.classList.add('err'); setTimeout(() => { del.dataset.sure = ''; del.textContent = 'Delete'; del.classList.remove('err'); }, 3000); }
+    };
+    div.appendChild(del);
+    box.appendChild(div);
+  }
+}
+function renderDiag() {
+  const d = [];
+  d.push(`Ear Prompter ${VERSION}`);
+  d.push(`Voice: ${voice().label}`);
+  for (const [k, v] of Object.entries(diag.engineMs)) d.push(`Loaded ${MODELS[k].label} in ${v}`);
+  if (diag.lastRun) d.push(diag.lastRun);
+  if (diag.crashNote) d.push(diag.crashNote);
+  for (const [k, v] of Object.entries(engineState.failed)) d.push(`Problem with ${MODELS[k].label}: ${v}`);
+  d.push(`Saving on this phone: ${diag.storage || 'checking…'}`);
+  d.push(`Voice engine runs: ${diag.host === 'page' ? 'in the page' : diag.host ? 'in the background (' + diag.host + ')' : 'starting…'}`);
+  if (diag.hostErrors.length) d.push('Engine notes: ' + diag.hostErrors.join(' | '));
+  d.push(diag.ua);
+  $('diag').textContent = d.join('\n');
+}
+function loadEditor() {
+  const s = cur(); $('text').value = s.text; $('scriptTitle').textContent = s.text.trim() ? titleOf(s.text) : 'Your script';
+}
+function openScript(id) {
+  if (id === currentId) return;
+  currentId = id; saveScripts(); loadEditor(); renderScripts(); prepare();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ---------- settings ----------
+function fillVoices() {
+  const sel = $('voice'); sel.innerHTML = '';
+  const g1 = document.createElement('optgroup'); g1.label = 'Most natural (first time downloads ~95 MB)';
+  const g2 = document.createElement('optgroup'); g2.label = 'Fast (first time downloads ~63 MB)';
+  for (const v of VOICES) { const o = document.createElement('option'); o.value = v.id; o.textContent = v.label; (v.engine === 'kokoro' ? g1 : g2).appendChild(o); }
+  sel.append(g1, g2); sel.value = S.voice;
+  const v = voice();
+  $('voiceHelp').textContent = v.engine === 'kokoro'
+    ? 'The most natural voices. Making the audio takes about as long as the script is, so start it while you set up.'
+    : 'Less natural, but makes the audio in a few seconds.';
+}
+function segInit(id, key, cast) {
+  const box = $(id);
+  const paint = () => box.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(S[key]) === b.dataset.v));
+  box.querySelectorAll('button').forEach(b => b.onclick = () => { S[key] = cast(b.dataset.v); saveSettings(); paint(); changed(key); });
+  paint();
+}
+function rangeInit(id, key, label) {
+  const el = $(id); el.value = S[key];
+  const show = () => { $(id + 'Val').textContent = label(S[key]); };
+  el.oninput = () => { S[key] = +el.value; show(); };
+  el.onchange = () => { saveSettings(); changed(key); };
+  show();
+}
+function checkInit(id, key) { const el = $(id); el.checked = !!S[key]; el.onchange = () => { S[key] = el.checked; saveSettings(); changed(key); }; }
+let rebuildTimer = 0;
+function changed(key) {
+  if (['say', 'extra', 'mode', 'repeat', 'lead', 'beeps'].includes(key)) {
+    clearTimeout(rebuildTimer);
+    rebuildTimer = setTimeout(() => prepare(), 150); // audio lines are kept, only the pauses change
+  } else if (['voice', 'speed', 'chunk', 'skipNotes'].includes(key)) {
+    if (key === 'voice') { fillVoices(); warmEngine(); }
+    renderDiag(); prepare();
+  } else if (key === 'prepAll' && S.prepAll && track) prepOthers(runToken);
+}
+$('voice').onchange = () => { S.voice = $('voice').value; saveSettings(); changed('voice'); };
+$('testVoice').onclick = async () => {
+  const v = voice(); $('testVoice').disabled = true;
+  try {
+    const sample = 'Here is how this voice sounds. Say each line after me, at your own pace.';
+    const key = lineKey(v, S.speed, sample);
+    let a = await cached(key);
+    if (!a) { setStatus('Getting the voice ready…'); a = await synthLine(v, sample); remember(key, a.rate, a.pcm); }
+    const url = URL.createObjectURL(new Blob([wav(a.pcm, a.rate)], { type: 'audio/wav' }));
+    const t = new Audio(url); t.onended = () => URL.revokeObjectURL(url); au.pause();
+    setStatus(track ? readyMsg : ''); await t.play();
+  } catch (e) { setStatus(`<span class="err">${e.message}</span>`); }
+  $('testVoice').disabled = false;
+};
+
+function warmEngine() {
+  const v = voice();
+  if (engineState.key === v.engine && engineState.ready) return;
+  engineState.ready = false; engineState.loadingKey = v.engine;
+  startHost().then((h) => h.post({ type: 'engine', spec: MODELS[v.engine] }), (e) => setStatus(`<span class="err">${e.message}</span>`));
+}
+
+// ---------- editor ----------
+let editTimer = 0;
+$('text').addEventListener('input', () => {
+  const s = cur(); s.text = $('text').value; s.updated = Date.now(); s.ready = '';
+  $('scriptTitle').textContent = s.text.trim() ? titleOf(s.text) : 'Your script';
+  saveScripts();
+  lines = scriptToLines(s.text, { maxWords: +S.chunk, skipNotes: S.skipNotes }); renderLines();
+  clearTimeout(editTimer); editTimer = setTimeout(() => { prepare(); renderScripts(); }, 1200);
+});
+$('newBtn').onclick = () => {
+  const s = cur();
+  if (!s.text.trim()) { $('text').focus(); return; }
+  const n = { id: uid(), text: '', updated: Date.now() }; scripts.push(n); currentId = n.id;
+  saveScripts(); loadEditor(); renderScripts(); prepare(); $('text').focus();
+};
+$('clearBtn').onclick = () => {
+  const b = $('clearBtn');
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap to clear'; setTimeout(() => { b.dataset.sure = ''; b.textContent = 'Clear'; }, 3000); return; }
+  b.dataset.sure = ''; b.textContent = 'Clear';
+  const s = cur(); s.text = ''; s.updated = Date.now(); saveScripts(); loadEditor(); prepare(); renderScripts(); $('text').focus();
+};
+$('tipClose').onclick = () => { S.tipHidden = true; saveSettings(); $('tip').classList.add('hide'); };
+
+// ---------- crash guard ----------
+// If Safari closes the page while the most natural voices are working (out of memory), the page reloads with
+// nothing to say why. A flag set while making audio and cleared when done or when you leave the page tells us.
+function guard(on) {
+  if (on && voice().engine === 'kokoro') store.set('inflight', { engine: 'kokoro', t: Date.now() });
+  else store.set('inflight', null);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) store.set('inflight', null); else if (making) guard(true); });
+window.addEventListener('pagehide', () => store.set('inflight', null));
+(function checkLastRun() {
+  const f = store.get('inflight', null);
+  if (f && f.engine === 'kokoro' && voice().engine === 'kokoro') {
+    const n = store.get('crashes', 0) + 1; store.set('crashes', n); store.set('inflight', null);
+    S.voice = 'fast-man'; saveSettings();
+    diag.crashNote = `The page closed itself while making audio with the most natural voices (${n}×), so it switched to the fast voice.`;
+    const nb = document.getElementById('notice');
+    nb.textContent = 'Last time the page closed itself while making audio with the most natural voices, which usually means the phone ran out of memory. It switched to the fast voice. You can switch back in Settings.';
+    nb.classList.remove('hide');
+  }
+})();
+
+// ---------- start ----------
+$('ver').textContent = 'v' + VERSION;
+if (S.tipHidden) $('tip').classList.add('hide');
+fillVoices();
+segInit('mode', 'mode', String);
+segInit('chunk', 'chunk', Number);
+segInit('repeat', 'repeat', Number);
+rangeInit('say', 'say', v => v.toFixed(2) + '×');
+rangeInit('extra', 'extra', v => v.toFixed(1) + ' s');
+rangeInit('speed', 'speed', v => v.toFixed(2) + '×');
+rangeInit('lead', 'lead', v => v + ' s');
+checkInit('beeps', 'beeps'); checkInit('skipNotes', 'skipNotes'); checkInit('prepAll', 'prepAll');
+loadEditor(); renderScripts(); renderNow();
+(async () => {
+  let ok = false;
+  try { const c = await caches.open('ear-prompter-files-v1'); ok = !!c; } catch { ok = false; }
+  let idb = !!(await db());
+  diag.storage = (ok ? 'voice files kept' : 'voice files NOT kept (downloads each visit)') + ', ' + (idb ? 'made audio kept' : 'made audio not kept');
+  renderDiag();
+})();
+warmEngine();
+prepare();
+window.__ear = { get trackVersion() { return trackVersion; }, get track() { return track; }, get lines() { return lines; }, get engine() { return engineState; }, prepare, VERSION };
+</script>
+</body>
+</html>
